@@ -17,6 +17,20 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        
+        // Загрузка API ключа из local.properties или переменных окружения
+        val properties = org.jetbrains.kotlin.konan.properties.Properties()
+        val localPropertiesFile = rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            localPropertiesFile.inputStream().use { properties.load(it) }
+        }
+        
+        // Приоритет: переменная окружения -> local.properties -> пустая строка
+        val apiKey = System.getenv("OPENROUTER_API_KEY") 
+            ?: properties.getProperty("OPENROUTER_API_KEY") 
+            ?: ""
+        
+        buildConfigField("String", "OPENROUTER_API_KEY", "\"$apiKey\"")
     }
 
     buildTypes {
@@ -37,6 +51,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

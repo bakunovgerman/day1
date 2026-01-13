@@ -2,6 +2,7 @@ package com.example.day1.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.day1.BuildConfig
 import com.example.day1.api.OpenRouterService
 import com.example.day1.data.ChatMessage
 import com.example.day1.data.MessageContent
@@ -23,16 +24,24 @@ class ChatViewModel : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
     
-    private val _apiKey = MutableStateFlow("")
-    val apiKey: StateFlow<String> = _apiKey.asStateFlow()
+    // API ключ автоматически загружается из BuildConfig
+    private val apiKey = BuildConfig.OPENROUTER_API_KEY
     
-    fun setApiKey(key: String) {
-        _apiKey.value = key
+    init {
+        // Проверка наличия API ключа при инициализации
+        if (apiKey.isEmpty()) {
+            _error.value = "API ключ не настроен. Добавьте OPENROUTER_API_KEY в local.properties"
+        }
     }
     
     fun sendMessage(text: String) {
-        if (text.isBlank() || _apiKey.value.isBlank()) {
-            _error.value = "Введите API ключ и сообщение"
+        if (text.isBlank()) {
+            _error.value = "Введите сообщение"
+            return
+        }
+        
+        if (apiKey.isEmpty()) {
+            _error.value = "API ключ не настроен. Добавьте OPENROUTER_API_KEY в local.properties"
             return
         }
         
@@ -54,7 +63,7 @@ class ChatViewModel : ViewModel() {
                 )
             }
             
-            openRouterService.sendMessage(messageHistory, _apiKey.value)
+            openRouterService.sendMessage(messageHistory, apiKey)
                 .onSuccess { responseText ->
                     val assistantMessage = ChatMessage(
                         id = UUID.randomUUID().toString(),

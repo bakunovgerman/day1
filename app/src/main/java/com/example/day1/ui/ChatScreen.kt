@@ -30,11 +30,8 @@ fun ChatScreen(
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
-    val apiKey by viewModel.apiKey.collectAsState()
     
     var messageText by remember { mutableStateOf("") }
-    var apiKeyText by remember { mutableStateOf("") }
-    var showApiKeyDialog by remember { mutableStateOf(apiKey.isEmpty()) }
     
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -59,9 +56,6 @@ fun ChatScreen(
                         viewModel.clearChat()
                     }) {
                         Icon(Icons.Default.Clear, contentDescription = "Очистить чат")
-                    }
-                    TextButton(onClick = { showApiKeyDialog = true }) {
-                        Text("API ключ")
                     }
                 }
             )
@@ -146,7 +140,7 @@ fun ChatScreen(
                         onValueChange = { messageText = it },
                         modifier = Modifier.weight(1f),
                         placeholder = { Text("Введите сообщение...") },
-                        enabled = !isLoading && apiKey.isNotEmpty(),
+                        enabled = !isLoading,
                         maxLines = 4
                     )
                     
@@ -159,12 +153,12 @@ fun ChatScreen(
                                 messageText = ""
                             }
                         },
-                        enabled = !isLoading && messageText.isNotBlank() && apiKey.isNotEmpty()
+                        enabled = !isLoading && messageText.isNotBlank()
                     ) {
                         Icon(
                             Icons.Default.Send,
                             contentDescription = "Отправить",
-                            tint = if (messageText.isNotBlank() && !isLoading && apiKey.isNotEmpty()) 
+                            tint = if (messageText.isNotBlank() && !isLoading) 
                                 MaterialTheme.colorScheme.primary 
                             else 
                                 MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
@@ -172,58 +166,6 @@ fun ChatScreen(
                     }
                 }
             }
-        }
-    }
-    
-    // API Key Dialog
-    if (showApiKeyDialog) {
-        AlertDialog(
-            onDismissRequest = { 
-                if (apiKey.isNotEmpty()) {
-                    showApiKeyDialog = false
-                }
-            },
-            title = { Text("Введите OpenRouter API ключ") },
-            text = {
-                Column {
-                    Text(
-                        "Получите ключ на openrouter.ai",
-                        fontSize = 12.sp,
-                        color = Color.Gray
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = apiKeyText,
-                        onValueChange = { apiKeyText = it },
-                        placeholder = { Text("sk-...") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (apiKeyText.isNotBlank()) {
-                            viewModel.setApiKey(apiKeyText)
-                            showApiKeyDialog = false
-                        }
-                    }
-                ) {
-                    Text("Сохранить")
-                }
-            },
-            dismissButton = {
-                if (apiKey.isNotEmpty()) {
-                    TextButton(onClick = { showApiKeyDialog = false }) {
-                        Text("Отмена")
-                    }
-                }
-            }
-        )
-        
-        LaunchedEffect(Unit) {
-            apiKeyText = apiKey
         }
     }
 }
