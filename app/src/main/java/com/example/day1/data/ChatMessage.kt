@@ -6,7 +6,17 @@ data class ChatMessage(
     val id: String,
     val role: String, // "user" or "assistant"
     val content: String,
+    val title: String? = null,
+    val body: String? = null,
+    val tags: List<String>? = null,
     val timestamp: Long = System.currentTimeMillis()
+)
+
+@Serializable
+data class AssistantResponse(
+    val title: String,
+    val body: String,
+    val tags: List<String>
 )
 
 @Serializable
