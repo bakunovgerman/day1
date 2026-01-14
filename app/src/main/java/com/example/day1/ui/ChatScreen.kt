@@ -173,6 +173,7 @@ fun ChatScreen(
 @Composable
 fun MessageBubble(message: ChatMessage) {
     val isUser = message.role == "user"
+    val hasStructuredData = !isUser && message.title != null && message.body != null
     
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -190,7 +191,7 @@ fun MessageBubble(message: ChatMessage) {
             else 
                 MaterialTheme.colorScheme.secondaryContainer,
             modifier = Modifier
-                .widthIn(max = 280.dp)
+                .widthIn(max = if (hasStructuredData) 320.dp else 280.dp)
         ) {
             Column(
                 modifier = Modifier.padding(12.dp)
@@ -204,14 +205,66 @@ fun MessageBubble(message: ChatMessage) {
                     else 
                         MaterialTheme.colorScheme.onSecondaryContainer
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = message.content,
-                    color = if (isUser) 
-                        MaterialTheme.colorScheme.onPrimaryContainer 
-                    else 
-                        MaterialTheme.colorScheme.onSecondaryContainer
-                )
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                if (hasStructuredData) {
+                    // Структурированное отображение для ответа AI
+                    StructuredMessageContent(message)
+                } else {
+                    // Обычное текстовое сообщение
+                    Text(
+                        text = message.content,
+                        color = if (isUser) 
+                            MaterialTheme.colorScheme.onPrimaryContainer 
+                        else 
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StructuredMessageContent(message: ChatMessage) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Title - жирный шрифт, чуть больше
+        message.title?.let { title ->
+            Text(
+                text = title,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+        }
+        
+        // Body - обычный шрифт
+        message.body?.let { body ->
+            Text(
+                text = body,
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+        }
+        
+        // Tags - салатовый блок с прозрачностью 70% и закругленными краями
+        message.tags?.let { tags ->
+            if (tags.isNotEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0x80, 0xFF, 0x80).copy(alpha = 0.7f), // Салатовый с прозрачностью 70%
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = tags.joinToString(", "),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        fontSize = 12.sp,
+                        color = Color(0x00, 0x60, 0x00), // Темно-зеленый текст для читаемости
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         }
     }
