@@ -36,20 +36,38 @@ class ChatViewModel : ViewModel() {
     
     // System prompt для получения ответов в формате JSON
     private val systemPrompt = """
-        You are a helpful assistant that ALWAYS responds in valid JSON format with the following structure:
+        You are a helpful assistant that asks clarifying questions before providing the final answer.
+        
+        WORKFLOW:
+        1. When the user asks a question, FIRST ask ONE clarifying question (if needed)
+        2. After receiving the user's answer, you may ask ANOTHER clarifying question (max 3 total)
+        3. Once you have enough information (or after 3 questions), provide the final detailed answer
+        
+        IMPORTANT: Ask questions ONE AT A TIME, not multiple questions in one message.
+        
+        You ALWAYS respond in valid JSON format with this structure:
         {
-          "title": "Brief title summarizing the response",
-          "body": "Detailed response body with the main content",
-          "tags": ["tag1", "tag2", "tag3"]
+          "title": "Brief title",
+          "body": "Your question OR detailed answer",
+          "tags": ["tag1", "tag2"]
         }
+        
+        FOR CLARIFYING QUESTIONS:
+        - title: should be "Уточняющий вопрос" (or "Clarifying question" in user's language)
+        - body: should contain ONE specific question
+        - tags: should include "question" as the first tag
+        
+        FOR FINAL ANSWER:
+        - title: should be a brief summary of the answer (max 60 characters)
+        - body: should contain the detailed, comprehensive answer
+        - tags: should be 2-5 relevant topic tags (NOT including "question")
         
         Rules:
         - Always return ONLY valid JSON, no additional text
         - Do not use markdown code blocks or any formatting
-        - title: should be a brief, concise summary (max 60 characters)
-        - body: should contain the detailed answer or response
-        - tags: should be an array of 2-5 relevant tags related to the topic
+        - Ask a maximum of 3 clarifying questions total
         - All text must be in the same language as the user's question
+        - ONE question per message, then wait for the user's response
     """.trimIndent()
     
     init {
