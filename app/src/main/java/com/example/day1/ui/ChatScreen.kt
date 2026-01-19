@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,8 +31,10 @@ fun ChatScreen(
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
+    val systemPrompt by viewModel.systemPrompt.collectAsState()
     
     var messageText by remember { mutableStateOf("") }
+    var showSystemPromptDialog by remember { mutableStateOf(false) }
     
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -52,6 +55,11 @@ fun ChatScreen(
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 ),
                 actions = {
+                    IconButton(onClick = { 
+                        showSystemPromptDialog = true
+                    }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Настроить System Prompt")
+                    }
                     IconButton(onClick = { 
                         viewModel.clearChat()
                     }) {
@@ -168,6 +176,21 @@ fun ChatScreen(
             }
         }
     }
+    
+    // Диалоговое окно для редактирования System Prompt
+    if (showSystemPromptDialog) {
+        SystemPromptDialog(
+            currentPrompt = systemPrompt,
+            onDismiss = { showSystemPromptDialog = false },
+            onSave = { newPrompt ->
+                viewModel.updateSystemPrompt(newPrompt)
+                showSystemPromptDialog = false
+            },
+            onReset = {
+                viewModel.resetSystemPromptToDefault()
+            }
+        )
+    }
 }
 
 @Composable
@@ -268,4 +291,75 @@ fun StructuredMessageContent(message: ChatMessage) {
             }
         }
     }
+}
+
+@Composable
+fun SystemPromptDialog(
+    currentPrompt: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+    onReset: () -> Unit
+) {
+    var editedPrompt by remember { mutableStateOf(currentPrompt) }
+    
+    // Обновляем editedPrompt когда currentPrompt изменяется
+    LaunchedEffect(currentPrompt) {
+        editedPrompt = currentPrompt
+    }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Редактировать System Prompt",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Настройте системный промпт для AI агента:",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                OutlinedTextField(
+                    value = editedPrompt,
+                    onValueChange = { editedPrompt = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 200.dp, max = 400.dp),
+                    placeholder = { Text("Введите system prompt...") },
+                    textStyle = MaterialTheme.typography.bodyMedium
+                )
+                
+                TextButton(
+                    onClick = {
+                        onReset()
+                        editedPrompt = currentPrompt
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Сбросить к значению по умолчанию")
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(editedPrompt)
+                }
+            ) {
+                Text("Сохранить")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
+        }
+    )
 }

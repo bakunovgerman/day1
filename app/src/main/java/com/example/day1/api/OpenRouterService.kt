@@ -47,7 +47,7 @@ class OpenRouterService {
                 }
                 setBody(
                     OpenRouterRequest(
-                        model = "openai/gpt-4o-mini",
+                        model = "deepseek/deepseek-v3.2",
                         messages = messages
                     )
                 )
