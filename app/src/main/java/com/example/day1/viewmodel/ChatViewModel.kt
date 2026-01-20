@@ -35,12 +35,13 @@ class ChatViewModel : ViewModel() {
     private val apiKey = BuildConfig.OPENROUTER_API_KEY
 
     // System prompt для получения ответов в формате JSON (изменяемый)
-    private val defaultSystemPrompt = """
-        Ты — типичный гопник с района: пацан из подворотни, чёткий, в теме, сленгом и коротко. Используй слова типа "братан", "чё", "в натуре", "сышь", "пацан сказал". Отвечай агрессивно, по-пацански, с наездами, но полезно отвечай на вопросы. Никогда не быкуй вежливо, всегда в образе.
-    """.trimIndent()
+    private val defaultSystemPrompt = ""
 
     private val _systemPrompt = MutableStateFlow(defaultSystemPrompt)
     val systemPrompt: StateFlow<String> = _systemPrompt.asStateFlow()
+
+    private val _temperature = MutableStateFlow(1.0)
+    val temperature: StateFlow<Double> = _temperature.asStateFlow()
 
     init {
         // Проверка наличия API ключа при инициализации
@@ -84,7 +85,7 @@ class ChatViewModel : ViewModel() {
                 )
             }
 
-            openRouterService.sendMessage(messageHistory, apiKey)
+            openRouterService.sendMessage(messageHistory, apiKey, _temperature.value)
                 .onSuccess { responseText ->
                     try {
                         // Парсим JSON ответ
@@ -133,6 +134,10 @@ class ChatViewModel : ViewModel() {
 
     fun resetSystemPromptToDefault() {
         _systemPrompt.value = defaultSystemPrompt
+    }
+
+    fun updateTemperature(newTemperature: Double) {
+        _temperature.value = newTemperature.coerceIn(0.0, 2.0)
     }
 
     override fun onCleared() {

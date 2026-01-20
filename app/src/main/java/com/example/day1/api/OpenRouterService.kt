@@ -35,7 +35,8 @@ class OpenRouterService {
 
     suspend fun sendMessage(
         messages: List<MessageContent>,
-        apiKey: String
+        apiKey: String,
+        temperature: Double = 1.0
     ): Result<String> {
         return try {
             val response: OpenRouterResponse = client.post("https://openrouter.ai/api/v1/chat/completions") {
@@ -48,7 +49,8 @@ class OpenRouterService {
                 setBody(
                     OpenRouterRequest(
                         model = "deepseek/deepseek-v3.2",
-                        messages = messages
+                        messages = messages,
+                        temperature = temperature
                     )
                 )
             }.body()

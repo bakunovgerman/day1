@@ -22,7 +22,8 @@ data class AssistantResponse(
 @Serializable
 data class OpenRouterRequest(
     val model: String,
-    val messages: List<MessageContent>
+    val messages: List<MessageContent>,
+    val temperature: Double = 1.0
 )
 
 @Serializable

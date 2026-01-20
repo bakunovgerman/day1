@@ -1,6 +1,8 @@
 package com.example.day1.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,9 +14,15 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import android.widget.Toast
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,6 +40,7 @@ fun ChatScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
     val systemPrompt by viewModel.systemPrompt.collectAsState()
+    val temperature by viewModel.temperature.collectAsState()
     
     var messageText by remember { mutableStateOf("") }
     var showSystemPromptDialog by remember { mutableStateOf(false) }
@@ -177,10 +186,11 @@ fun ChatScreen(
         }
     }
     
-    // Диалоговое окно для редактирования System Prompt
+    // Диалоговое окно для редактирования System Prompt и Temperature
     if (showSystemPromptDialog) {
         SystemPromptDialog(
             currentPrompt = systemPrompt,
+            currentTemperature = temperature,
             onDismiss = { showSystemPromptDialog = false },
             onSave = { newPrompt ->
                 viewModel.updateSystemPrompt(newPrompt)
@@ -188,15 +198,40 @@ fun ChatScreen(
             },
             onReset = {
                 viewModel.resetSystemPromptToDefault()
+            },
+            onTemperatureChange = { newTemp ->
+                viewModel.updateTemperature(newTemp)
             }
         )
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MessageBubble(message: ChatMessage) {
     val isUser = message.role == "user"
     val hasStructuredData = !isUser && message.title != null && message.body != null
+    
+    val clipboardManager = LocalClipboardManager.current
+    val hapticFeedback = LocalHapticFeedback.current
+    val context = LocalContext.current
+    
+    // Функция для получения текста для копирования
+    fun getTextToCopy(): String {
+        return if (hasStructuredData) {
+            buildString {
+                message.title?.let { append("$it\n\n") }
+                message.body?.let { append(it) }
+                message.tags?.let { 
+                    if (it.isNotEmpty()) {
+                        append("\n\nТеги: ${it.joinToString(", ")}")
+                    }
+                }
+            }
+        } else {
+            message.content
+        }
+    }
     
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -215,6 +250,25 @@ fun MessageBubble(message: ChatMessage) {
                 MaterialTheme.colorScheme.secondaryContainer,
             modifier = Modifier
                 .widthIn(max = if (hasStructuredData) 320.dp else 280.dp)
+                .then(
+                    // Добавляем долгое нажатие только для сообщений AI
+                    if (!isUser) {
+                        Modifier.combinedClickable(
+                            onClick = { },
+                            onLongClick = {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                clipboardManager.setText(AnnotatedString(getTextToCopy()))
+                                Toast.makeText(
+                                    context,
+                                    "Текст скопирован",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             Column(
                 modifier = Modifier.padding(12.dp)
@@ -296,9 +350,11 @@ fun StructuredMessageContent(message: ChatMessage) {
 @Composable
 fun SystemPromptDialog(
     currentPrompt: String,
+    currentTemperature: Double,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit,
-    onReset: () -> Unit
+    onReset: () -> Unit,
+    onTemperatureChange: (Double) -> Unit
 ) {
     var editedPrompt by remember { mutableStateOf(currentPrompt) }
     
@@ -311,18 +367,69 @@ fun SystemPromptDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "Редактировать System Prompt",
+                text = "Настройки",
                 fontWeight = FontWeight.Bold
             )
         },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Temperature control
                 Text(
-                    text = "Настройте системный промпт для AI агента:",
+                    text = "Temperature: ${String.format("%.2f", currentTemperature)}",
                     fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "0.0\nТочный",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 12.sp
+                    )
+                    
+                    Slider(
+                        value = currentTemperature.toFloat(),
+                        onValueChange = { onTemperatureChange(it.toDouble()) },
+                        valueRange = 0f..2f,
+                        steps = 19,
+                        modifier = Modifier.weight(1f)
+                    )
+                    
+                    Text(
+                        text = "2.0\nКреативный",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 12.sp
+                    )
+                }
+                
+                Text(
+                    text = when {
+                        currentTemperature < 0.5 -> "Детерминированные, предсказуемые ответы"
+                        currentTemperature < 1.2 -> "Сбалансированные ответы (стандарт)"
+                        else -> "Креативные, разнообразные ответы"
+                    },
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                HorizontalDivider()
+                
+                // System Prompt
+                Text(
+                    text = "Системный промпт:",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 
@@ -331,7 +438,7 @@ fun SystemPromptDialog(
                     onValueChange = { editedPrompt = it },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 200.dp, max = 400.dp),
+                        .heightIn(min = 150.dp, max = 300.dp),
                     placeholder = { Text("Введите system prompt...") },
                     textStyle = MaterialTheme.typography.bodyMedium
                 )
@@ -343,7 +450,7 @@ fun SystemPromptDialog(
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Сбросить к значению по умолчанию")
+                    Text("Сбросить промпт к значению по умолчанию")
                 }
             }
         },
