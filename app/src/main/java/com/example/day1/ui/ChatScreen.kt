@@ -273,15 +273,37 @@ fun MessageBubble(message: ChatMessage) {
             Column(
                 modifier = Modifier.padding(12.dp)
             ) {
-                Text(
-                    text = if (isUser) "Вы" else "AI Агент",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
-                    color = if (isUser) 
-                        MaterialTheme.colorScheme.onPrimaryContainer 
-                    else 
-                        MaterialTheme.colorScheme.onSecondaryContainer
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isUser) "Вы" else "AI Агент",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = if (isUser) 
+                            MaterialTheme.colorScheme.onPrimaryContainer 
+                        else 
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    
+                    // Показываем температуру для ответов ассистента
+                    if (!isUser && message.temperature != null) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        ) {
+                            Text(
+                                text = "T: ${String.format("%.1f", message.temperature)}",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 if (hasStructuredData) {

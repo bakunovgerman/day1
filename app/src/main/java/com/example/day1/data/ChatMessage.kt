@@ -9,6 +9,7 @@ data class ChatMessage(
     val title: String? = null,
     val body: String? = null,
     val tags: List<String>? = null,
+    val temperature: Double? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
 

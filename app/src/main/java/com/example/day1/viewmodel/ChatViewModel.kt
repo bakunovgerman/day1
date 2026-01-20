@@ -97,7 +97,8 @@ class ChatViewModel : ViewModel() {
                             content = responseText,
                             title = parsedResponse.title,
                             body = parsedResponse.body,
-                            tags = parsedResponse.tags
+                            tags = parsedResponse.tags,
+                            temperature = _temperature.value
                         )
                         _messages.value = _messages.value + assistantMessage
                     } catch (e: Exception) {
@@ -105,7 +106,8 @@ class ChatViewModel : ViewModel() {
                         val assistantMessage = ChatMessage(
                             id = UUID.randomUUID().toString(),
                             role = "assistant",
-                            content = responseText
+                            content = responseText,
+                            temperature = _temperature.value
                         )
                         _messages.value = _messages.value + assistantMessage
                        // _error.value = "Предупреждение: ответ не в ожидаемом формате JSON"
