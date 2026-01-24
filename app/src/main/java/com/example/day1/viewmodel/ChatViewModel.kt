@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.day1.BuildConfig
 import com.example.day1.api.OpenRouterService
+import com.example.day1.data.AIModel
 import com.example.day1.data.AssistantResponse
 import com.example.day1.data.ChatMessage
 import com.example.day1.data.MessageContent
@@ -43,11 +44,25 @@ class ChatViewModel : ViewModel() {
     private val _temperature = MutableStateFlow(1.0)
     val temperature: StateFlow<Double> = _temperature.asStateFlow()
 
+    // Доступные модели
+    private val _availableModels = MutableStateFlow<List<AIModel>>(emptyList())
+    val availableModels: StateFlow<List<AIModel>> = _availableModels.asStateFlow()
+
+    // Выбранные модели для отправки запросов (по умолчанию первые две)
+    private val _selectedModels = MutableStateFlow<List<AIModel>>(emptyList())
+    val selectedModels: StateFlow<List<AIModel>> = _selectedModels.asStateFlow()
+
     init {
         // Проверка наличия API ключа при инициализации
         if (apiKey.isEmpty()) {
             _error.value = "API ключ не настроен. Добавьте OPENROUTER_API_KEY в local.properties"
         }
+        
+        // Загружаем список доступных моделей
+        _availableModels.value = openRouterService.getAvailableModels()
+        
+        // По умолчанию выбираем первые две модели
+        _selectedModels.value = _availableModels.value.take(2)
     }
 
     fun sendMessage(text: String) {
@@ -58,6 +73,11 @@ class ChatViewModel : ViewModel() {
 
         if (apiKey.isEmpty()) {
             _error.value = "API ключ не настроен. Добавьте OPENROUTER_API_KEY в local.properties"
+            return
+        }
+
+        if (_selectedModels.value.isEmpty()) {
+            _error.value = "Выберите хотя бы одну модель"
             return
         }
 
@@ -85,20 +105,33 @@ class ChatViewModel : ViewModel() {
                 )
             }
 
-            openRouterService.sendMessage(messageHistory, apiKey, _temperature.value)
-                .onSuccess { responseText ->
+            // Отправляем запросы ко всем выбранным моделям одновременно
+            val responses = openRouterService.sendMessageToMultipleModels(
+                messages = messageHistory,
+                apiKey = apiKey,
+                models = _selectedModels.value,
+                temperature = _temperature.value
+            )
+
+            // Обрабатываем ответы от каждой модели
+            responses.forEach { result ->
+                result.onSuccess { modelResponse ->
                     try {
-                        // Парсим JSON ответ
-                        val parsedResponse = json.decodeFromString<AssistantResponse>(responseText)
+                        // Пытаемся распарсить JSON ответ
+                        val parsedResponse = json.decodeFromString<AssistantResponse>(modelResponse.content)
 
                         val assistantMessage = ChatMessage(
                             id = UUID.randomUUID().toString(),
                             role = "assistant",
-                            content = responseText,
+                            content = modelResponse.content,
                             title = parsedResponse.title,
                             body = parsedResponse.body,
                             tags = parsedResponse.tags,
-                            temperature = _temperature.value
+                            temperature = _temperature.value,
+                            modelName = modelResponse.modelName,
+                            responseTimeMs = modelResponse.responseTimeMs,
+                            tokensUsed = modelResponse.totalTokens,
+                            cost = modelResponse.cost
                         )
                         _messages.value = _messages.value + assistantMessage
                     } catch (e: Exception) {
@@ -106,16 +139,20 @@ class ChatViewModel : ViewModel() {
                         val assistantMessage = ChatMessage(
                             id = UUID.randomUUID().toString(),
                             role = "assistant",
-                            content = responseText,
-                            temperature = _temperature.value
+                            content = modelResponse.content,
+                            temperature = _temperature.value,
+                            modelName = modelResponse.modelName,
+                            responseTimeMs = modelResponse.responseTimeMs,
+                            tokensUsed = modelResponse.totalTokens,
+                            cost = modelResponse.cost
                         )
                         _messages.value = _messages.value + assistantMessage
-                       // _error.value = "Предупреждение: ответ не в ожидаемом формате JSON"
                     }
                 }
                 .onFailure { exception ->
                     _error.value = "Ошибка: ${exception.message}"
                 }
+            }
 
             _isLoading.value = false
         }
@@ -140,6 +177,16 @@ class ChatViewModel : ViewModel() {
 
     fun updateTemperature(newTemperature: Double) {
         _temperature.value = newTemperature.coerceIn(0.0, 2.0)
+    }
+
+    fun toggleModelSelection(model: AIModel) {
+        val currentSelected = _selectedModels.value.toMutableList()
+        if (currentSelected.contains(model)) {
+            currentSelected.remove(model)
+        } else {
+            currentSelected.add(model)
+        }
+        _selectedModels.value = currentSelected
     }
 
     override fun onCleared() {

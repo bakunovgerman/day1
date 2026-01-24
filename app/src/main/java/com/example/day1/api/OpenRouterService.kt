@@ -1,7 +1,9 @@
 package com.example.day1.api
 
 import android.util.Log
+import com.example.day1.data.AIModel
 import com.example.day1.data.MessageContent
+import com.example.day1.data.ModelResponse
 import com.example.day1.data.OpenRouterRequest
 import com.example.day1.data.OpenRouterResponse
 import io.ktor.client.*
@@ -12,7 +14,11 @@ import io.ktor.client.plugins.logging.*
 import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.Json
+import kotlin.system.measureTimeMillis
 
 class OpenRouterService {
     private val client = HttpClient(Android) {
@@ -32,6 +38,24 @@ class OpenRouterService {
             level = LogLevel.ALL
         }
     }
+
+    // Список доступных моделей с ценами (можно расширять)
+    private val availableModels = listOf(
+        AIModel(
+            id = "z-ai/glm-4.7-flash",
+            displayName = "GLM-4.7 Flash",
+            costPerMillionPromptTokens = 0.1,
+            costPerMillionCompletionTokens = 0.2
+        ),
+        AIModel(
+            id = "meta-llama/llama-3.2-1b-instruct",
+            displayName = "Llama 3.2 1B Instruct",
+            costPerMillionPromptTokens = 0.7,
+            costPerMillionCompletionTokens = 0.9
+        )
+    )
+
+    fun getAvailableModels(): List<AIModel> = availableModels
 
     suspend fun sendMessage(
         messages: List<MessageContent>,
@@ -64,6 +88,77 @@ class OpenRouterService {
             }
         } catch (e: Exception) {
             Log.e("OpenRouterService", "Error sending message", e)
+            Result.failure(e)
+        }
+    }
+
+    // Отправка запроса к нескольким моделям одновременно
+    suspend fun sendMessageToMultipleModels(
+        messages: List<MessageContent>,
+        apiKey: String,
+        models: List<AIModel>,
+        temperature: Double = 1.0
+    ): List<Result<ModelResponse>> = coroutineScope {
+        models.map { model ->
+            async {
+                sendMessageToModel(messages, apiKey, model, temperature)
+            }
+        }.awaitAll()
+    }
+
+    // Отправка запроса к одной модели с метриками
+    private suspend fun sendMessageToModel(
+        messages: List<MessageContent>,
+        apiKey: String,
+        model: AIModel,
+        temperature: Double
+    ): Result<ModelResponse> {
+        return try {
+            var response: OpenRouterResponse? = null
+            val responseTime = measureTimeMillis {
+                response = client.post("https://openrouter.ai/api/v1/chat/completions") {
+                    contentType(ContentType.Application.Json)
+                    headers {
+                        append("Authorization", "Bearer $apiKey")
+                        append("HTTP-Referer", "com.example.day1")
+                        append("X-Title", "Day1 Chat App")
+                    }
+                    setBody(
+                        OpenRouterRequest(
+                            model = model.id,
+                            messages = messages,
+                            temperature = temperature
+                        )
+                    )
+                }.body()
+            }
+
+            val resp = response!!
+            
+            if (resp.error != null) {
+                Result.failure(Exception(resp.error.message))
+            } else if (resp.choices.isNullOrEmpty()) {
+                Result.failure(Exception("Пустой ответ от сервера"))
+            } else {
+                val usage = resp.usage
+                val promptTokens = usage?.prompt_tokens ?: 0
+                val completionTokens = usage?.completion_tokens ?: 0
+                val totalTokens = usage?.total_tokens ?: (promptTokens + completionTokens)
+
+                Result.success(
+                    ModelResponse(
+                        modelName = model.displayName,
+                        content = resp.choices[0].message.content,
+                        responseTimeMs = responseTime,
+                        promptTokens = promptTokens,
+                        completionTokens = completionTokens,
+                        totalTokens = totalTokens,
+                        cost = resp.usage?.cost ?: 0.0
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("OpenRouterService", "Error sending message to ${model.displayName}", e)
             Result.failure(e)
         }
     }

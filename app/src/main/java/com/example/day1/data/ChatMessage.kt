@@ -10,7 +10,11 @@ data class ChatMessage(
     val body: String? = null,
     val tags: List<String>? = null,
     val temperature: Double? = null,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val modelName: String? = null,
+    val responseTimeMs: Long? = null,
+    val tokensUsed: Int? = null,
+    val cost: Double? = null
 )
 
 @Serializable
@@ -37,7 +41,9 @@ data class MessageContent(
 data class OpenRouterResponse(
     val id: String? = null,
     val choices: List<Choice>? = null,
-    val error: ErrorDetail? = null
+    val error: ErrorDetail? = null,
+    val usage: Usage? = null,
+    val model: String? = null
 )
 
 @Serializable
@@ -55,4 +61,31 @@ data class MessageResponse(
 data class ErrorDetail(
     val message: String,
     val code: String? = null
+)
+
+@Serializable
+data class Usage(
+    val prompt_tokens: Int? = null,
+    val completion_tokens: Int? = null,
+    val total_tokens: Int? = null,
+    val cost: Double? = null,
+)
+
+// Модель AI с настройками стоимости
+data class AIModel(
+    val id: String,
+    val displayName: String,
+    val costPerMillionPromptTokens: Double,
+    val costPerMillionCompletionTokens: Double
+)
+
+// Результат запроса к модели с метриками
+data class ModelResponse(
+    val modelName: String,
+    val content: String,
+    val responseTimeMs: Long,
+    val promptTokens: Int,
+    val completionTokens: Int,
+    val totalTokens: Int,
+    val cost: Double
 )

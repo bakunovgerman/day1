@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.day1.data.ChatMessage
+import com.example.day1.data.AIModel
 import com.example.day1.viewmodel.ChatViewModel
 import kotlinx.coroutines.launch
 
@@ -41,6 +42,8 @@ fun ChatScreen(
     val error by viewModel.error.collectAsState()
     val systemPrompt by viewModel.systemPrompt.collectAsState()
     val temperature by viewModel.temperature.collectAsState()
+    val availableModels by viewModel.availableModels.collectAsState()
+    val selectedModels by viewModel.selectedModels.collectAsState()
     
     var messageText by remember { mutableStateOf("") }
     var showSystemPromptDialog by remember { mutableStateOf(false) }
@@ -186,11 +189,13 @@ fun ChatScreen(
         }
     }
     
-    // Диалоговое окно для редактирования System Prompt и Temperature
+    // Диалоговое окно для редактирования System Prompt, Temperature и выбора моделей
     if (showSystemPromptDialog) {
         SystemPromptDialog(
             currentPrompt = systemPrompt,
             currentTemperature = temperature,
+            availableModels = availableModels,
+            selectedModels = selectedModels,
             onDismiss = { showSystemPromptDialog = false },
             onSave = { newPrompt ->
                 viewModel.updateSystemPrompt(newPrompt)
@@ -201,6 +206,9 @@ fun ChatScreen(
             },
             onTemperatureChange = { newTemp ->
                 viewModel.updateTemperature(newTemp)
+            },
+            onModelToggle = { model ->
+                viewModel.toggleModelSelection(model)
             }
         )
     }
@@ -278,15 +286,48 @@ fun MessageBubble(message: ChatMessage) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = if (isUser) "Вы" else "AI Агент",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        color = if (isUser) 
-                            MaterialTheme.colorScheme.onPrimaryContainer 
-                        else 
-                            MaterialTheme.colorScheme.onSecondaryContainer
-                    )
+                    Column {
+                        Text(
+                            text = if (isUser) "Вы" else message.modelName ?: "AI Агент",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = if (isUser) 
+                                MaterialTheme.colorScheme.onPrimaryContainer 
+                            else 
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        
+                        // Показываем метрики для ответов ассистента
+                        if (!isUser && (message.responseTimeMs != null || message.tokensUsed != null)) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                message.responseTimeMs?.let { time ->
+                                    Text(
+                                        text = "⏱ ${time}ms",
+                                        fontSize = 9.sp,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                                    )
+                                }
+                                message.tokensUsed?.let { tokens ->
+                                    Text(
+                                        text = "🔤 $tokens tok",
+                                        fontSize = 9.sp,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                                    )
+                                }
+                                message.cost?.let { cost ->
+                                    Text(
+                                        text = "💰 $${String.format("%.6f", cost)}",
+                                        fontSize = 9.sp,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                        }
+                    }
                     
                     // Показываем температуру для ответов ассистента
                     if (!isUser && message.temperature != null) {
@@ -373,10 +414,13 @@ fun StructuredMessageContent(message: ChatMessage) {
 fun SystemPromptDialog(
     currentPrompt: String,
     currentTemperature: Double,
+    availableModels: List<AIModel>,
+    selectedModels: List<AIModel>,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit,
     onReset: () -> Unit,
-    onTemperatureChange: (Double) -> Unit
+    onTemperatureChange: (Double) -> Unit,
+    onModelToggle: (AIModel) -> Unit
 ) {
     var editedPrompt by remember { mutableStateOf(currentPrompt) }
     
@@ -444,6 +488,56 @@ fun SystemPromptDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth()
                 )
+                
+                HorizontalDivider()
+                
+                // Выбор моделей
+                Text(
+                    text = "Модели для запроса:",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    availableModels.forEach { model ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = model.displayName,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = "Prompt: $${model.costPerMillionPromptTokens}/1M tok | Completion: $${model.costPerMillionCompletionTokens}/1M tok",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = selectedModels.contains(model),
+                                onCheckedChange = { onModelToggle(model) }
+                            )
+                        }
+                    }
+                }
+                
+                if (selectedModels.isEmpty()) {
+                    Text(
+                        text = "⚠️ Выберите хотя бы одну модель",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
                 
                 HorizontalDivider()
                 
