@@ -42,17 +42,11 @@ class OpenRouterService {
     // Список доступных моделей с ценами (можно расширять)
     private val availableModels = listOf(
         AIModel(
-            id = "z-ai/glm-4.7-flash",
-            displayName = "GLM-4.7 Flash",
-            costPerMillionPromptTokens = 0.1,
-            costPerMillionCompletionTokens = 0.2
+            id = "openai/gpt-4o-mini",
+            displayName = "GPT-4o-mini",
+            costPerMillionPromptTokens = 0.15,
+            costPerMillionCompletionTokens = 0.6
         ),
-        AIModel(
-            id = "meta-llama/llama-3.2-1b-instruct",
-            displayName = "Llama 3.2 1B Instruct",
-            costPerMillionPromptTokens = 0.7,
-            costPerMillionCompletionTokens = 0.9
-        )
     )
 
     fun getAvailableModels(): List<AIModel> = availableModels
@@ -144,6 +138,17 @@ class OpenRouterService {
                 val promptTokens = usage?.prompt_tokens ?: 0
                 val completionTokens = usage?.completion_tokens ?: 0
                 val totalTokens = usage?.total_tokens ?: (promptTokens + completionTokens)
+                val cost = usage?.cost ?: 0.0
+
+                // Логирование статистики токенов
+                Log.d("OpenRouterService", """
+                    Модель: ${model.displayName}
+                    Время ответа: ${responseTime}ms
+                    Токены запроса (prompt): $promptTokens
+                    Токены ответа (completion): $completionTokens
+                    Всего токенов: $totalTokens
+                    Стоимость: $$cost
+                """.trimIndent())
 
                 Result.success(
                     ModelResponse(
@@ -153,7 +158,7 @@ class OpenRouterService {
                         promptTokens = promptTokens,
                         completionTokens = completionTokens,
                         totalTokens = totalTokens,
-                        cost = resp.usage?.cost ?: 0.0
+                        cost = cost
                     )
                 )
             }

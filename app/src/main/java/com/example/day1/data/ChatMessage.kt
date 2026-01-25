@@ -14,6 +14,8 @@ data class ChatMessage(
     val modelName: String? = null,
     val responseTimeMs: Long? = null,
     val tokensUsed: Int? = null,
+    val promptTokens: Int? = null,
+    val completionTokens: Int? = null,
     val cost: Double? = null
 )
 

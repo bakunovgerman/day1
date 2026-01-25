@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -27,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.ViewModelProvider
 import com.example.day1.data.ChatMessage
 import com.example.day1.data.AIModel
 import com.example.day1.viewmodel.ChatViewModel
@@ -35,7 +37,11 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
-    viewModel: ChatViewModel = viewModel()
+    viewModel: ChatViewModel = viewModel(
+        factory = ViewModelProvider.AndroidViewModelFactory.getInstance(
+            LocalContext.current.applicationContext as android.app.Application
+        )
+    )
 ) {
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -44,12 +50,21 @@ fun ChatScreen(
     val temperature by viewModel.temperature.collectAsState()
     val availableModels by viewModel.availableModels.collectAsState()
     val selectedModels by viewModel.selectedModels.collectAsState()
+    val usePromptAboveContext by viewModel.usePromptAboveContext.collectAsState()
     
     var messageText by remember { mutableStateOf("") }
     var showSystemPromptDialog by remember { mutableStateOf(false) }
     
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    
+    // Определяем, находимся ли мы внизу списка
+    val isAtBottom by remember {
+        derivedStateOf {
+            val lastVisibleItemIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+            lastVisibleItemIndex == messages.size - 1 || messages.isEmpty()
+        }
+    }
     
     // Auto-scroll to bottom when new messages arrive
     LaunchedEffect(messages.size) {
@@ -115,31 +130,56 @@ fun ChatScreen(
                 }
             }
             
-            // Messages list
-            LazyColumn(
+            // Messages list with scroll to bottom button
+            Box(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth(),
-                state = listState,
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .fillMaxWidth()
             ) {
-                items(messages) { message ->
-                    MessageBubble(message)
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    state = listState,
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(messages) { message ->
+                        MessageBubble(message)
+                    }
+                    
+                    if (isLoading) {
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Start
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("AI печатает...")
+                            }
+                        }
+                    }
                 }
                 
-                if (isLoading) {
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.Start
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("AI печатает...")
-                        }
+                // Кнопка прокрутки вниз
+                if (messages.isNotEmpty() && !isAtBottom) {
+                    FloatingActionButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                listState.animateScrollToItem(messages.size - 1)
+                            }
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(16.dp),
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Прокрутить вниз"
+                        )
                     }
                 }
             }
@@ -159,8 +199,15 @@ fun ChatScreen(
                         value = messageText,
                         onValueChange = { messageText = it },
                         modifier = Modifier.weight(1f),
-                        placeholder = { Text("Введите сообщение...") },
-                        enabled = !isLoading,
+                        placeholder = { 
+                            Text(
+                                if (usePromptAboveContext) 
+                                    "промпт выше контекста" 
+                                else 
+                                    "Введите сообщение..."
+                            ) 
+                        },
+                        enabled = !isLoading && !usePromptAboveContext,
                         maxLines = 4
                     )
                     
@@ -168,17 +215,20 @@ fun ChatScreen(
                     
                     IconButton(
                         onClick = {
-                            if (messageText.isNotBlank()) {
+                            if (usePromptAboveContext) {
+                                // Отправляем промпт из файла
+                                viewModel.sendPromptFromFile()
+                            } else if (messageText.isNotBlank()) {
                                 viewModel.sendMessage(messageText)
                                 messageText = ""
                             }
                         },
-                        enabled = !isLoading && messageText.isNotBlank()
+                        enabled = !isLoading && (usePromptAboveContext || messageText.isNotBlank())
                     ) {
                         Icon(
                             Icons.Default.Send,
                             contentDescription = "Отправить",
-                            tint = if (messageText.isNotBlank() && !isLoading) 
+                            tint = if ((usePromptAboveContext || messageText.isNotBlank()) && !isLoading) 
                                 MaterialTheme.colorScheme.primary 
                             else 
                                 MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
@@ -196,6 +246,7 @@ fun ChatScreen(
             currentTemperature = temperature,
             availableModels = availableModels,
             selectedModels = selectedModels,
+            usePromptAboveContext = usePromptAboveContext,
             onDismiss = { showSystemPromptDialog = false },
             onSave = { newPrompt ->
                 viewModel.updateSystemPrompt(newPrompt)
@@ -209,6 +260,9 @@ fun ChatScreen(
             },
             onModelToggle = { model ->
                 viewModel.toggleModelSelection(model)
+            },
+            onPromptAboveContextToggle = { enabled ->
+                viewModel.togglePromptAboveContext(enabled)
             }
         )
     }
@@ -298,32 +352,73 @@ fun MessageBubble(message: ChatMessage) {
                         )
                         
                         // Показываем метрики для ответов ассистента
-                        if (!isUser && (message.responseTimeMs != null || message.tokensUsed != null)) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                        if (!isUser && (message.responseTimeMs != null || message.promptTokens != null || message.completionTokens != null)) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                message.responseTimeMs?.let { time ->
-                                    Text(
-                                        text = "⏱ ${time}ms",
-                                        fontSize = 9.sp,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
-                                    )
-                                }
-                                message.tokensUsed?.let { tokens ->
-                                    Text(
-                                        text = "🔤 $tokens tok",
-                                        fontSize = 9.sp,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
-                                    )
-                                }
-                                message.cost?.let { cost ->
-                                    Text(
-                                        text = "💰 $${String.format("%.6f", cost)}",
-                                        fontSize = 9.sp,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
-                                    )
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    // Первая строка: время ответа и стоимость
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        message.responseTimeMs?.let { time ->
+                                            Text(
+                                                text = "⏱ ${time}ms",
+                                                fontSize = 9.sp,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                        message.cost?.let { cost ->
+                                            Text(
+                                                text = "💰 $${String.format("%.6f", cost)}",
+                                                fontSize = 9.sp,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                    
+                                    // Вторая строка: детализация токенов
+                                    if (message.promptTokens != null && message.completionTokens != null) {
+                                        HorizontalDivider(
+                                            modifier = Modifier.padding(vertical = 1.dp),
+                                            thickness = 0.5.dp,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.2f)
+                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Text(
+                                                    text = "📥 вход: ${message.promptTokens}",
+                                                    fontSize = 9.sp,
+                                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.65f)
+                                                )
+                                                Text(
+                                                    text = "📤 выход: ${message.completionTokens}",
+                                                    fontSize = 9.sp,
+                                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.65f)
+                                                )
+                                            }
+                                            message.tokensUsed?.let { tokens ->
+                                                Text(
+                                                    text = "∑ $tokens",
+                                                    fontSize = 9.sp,
+                                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -345,8 +440,7 @@ fun MessageBubble(message: ChatMessage) {
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                
+
                 if (hasStructuredData) {
                     // Структурированное отображение для ответа AI
                     StructuredMessageContent(message)
@@ -367,9 +461,7 @@ fun MessageBubble(message: ChatMessage) {
 
 @Composable
 fun StructuredMessageContent(message: ChatMessage) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
+    Column {
         // Title - жирный шрифт, чуть больше
         message.title?.let { title ->
             Text(
@@ -416,11 +508,13 @@ fun SystemPromptDialog(
     currentTemperature: Double,
     availableModels: List<AIModel>,
     selectedModels: List<AIModel>,
+    usePromptAboveContext: Boolean,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit,
     onReset: () -> Unit,
     onTemperatureChange: (Double) -> Unit,
-    onModelToggle: (AIModel) -> Unit
+    onModelToggle: (AIModel) -> Unit,
+    onPromptAboveContextToggle: (Boolean) -> Unit
 ) {
     var editedPrompt by remember { mutableStateOf(currentPrompt) }
     
@@ -541,6 +635,37 @@ fun SystemPromptDialog(
                 
                 HorizontalDivider()
                 
+                // Промпт выше контекста
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Промпт выше контекста:",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Switch(
+                        checked = usePromptAboveContext,
+                        onCheckedChange = { onPromptAboveContextToggle(it) }
+                    )
+                }
+                
+                if (usePromptAboveContext) {
+                    Text(
+                        text = "ℹ️ Промпт загружается из файла. Поле ввода сообщений отключено.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                
+                HorizontalDivider()
+                
                 // System Prompt
                 Text(
                     text = "Системный промпт:",
@@ -556,7 +681,8 @@ fun SystemPromptDialog(
                         .fillMaxWidth()
                         .heightIn(min = 150.dp, max = 300.dp),
                     placeholder = { Text("Введите system prompt...") },
-                    textStyle = MaterialTheme.typography.bodyMedium
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                    enabled = !usePromptAboveContext
                 )
                 
                 TextButton(

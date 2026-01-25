@@ -1,8 +1,10 @@
 package com.example.day1.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.day1.BuildConfig
+import com.example.day1.R
 import com.example.day1.api.OpenRouterService
 import com.example.day1.data.AIModel
 import com.example.day1.data.AssistantResponse
@@ -15,7 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import java.util.UUID
 
-class ChatViewModel : ViewModel() {
+class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val openRouterService = OpenRouterService()
 
     private val json = Json {
@@ -43,6 +45,10 @@ class ChatViewModel : ViewModel() {
 
     private val _temperature = MutableStateFlow(1.0)
     val temperature: StateFlow<Double> = _temperature.asStateFlow()
+
+    // Промпт выше контекста
+    private val _usePromptAboveContext = MutableStateFlow(false)
+    val usePromptAboveContext: StateFlow<Boolean> = _usePromptAboveContext.asStateFlow()
 
     // Доступные модели
     private val _availableModels = MutableStateFlow<List<AIModel>>(emptyList())
@@ -131,6 +137,8 @@ class ChatViewModel : ViewModel() {
                             modelName = modelResponse.modelName,
                             responseTimeMs = modelResponse.responseTimeMs,
                             tokensUsed = modelResponse.totalTokens,
+                            promptTokens = modelResponse.promptTokens,
+                            completionTokens = modelResponse.completionTokens,
                             cost = modelResponse.cost
                         )
                         _messages.value = _messages.value + assistantMessage
@@ -144,6 +152,8 @@ class ChatViewModel : ViewModel() {
                             modelName = modelResponse.modelName,
                             responseTimeMs = modelResponse.responseTimeMs,
                             tokensUsed = modelResponse.totalTokens,
+                            promptTokens = modelResponse.promptTokens,
+                            completionTokens = modelResponse.completionTokens,
                             cost = modelResponse.cost
                         )
                         _messages.value = _messages.value + assistantMessage
@@ -187,6 +197,20 @@ class ChatViewModel : ViewModel() {
             currentSelected.add(model)
         }
         _selectedModels.value = currentSelected
+    }
+
+    fun togglePromptAboveContext(enabled: Boolean) {
+        _usePromptAboveContext.value = enabled
+    }
+
+    fun sendPromptFromFile() {
+        try {
+            val inputStream = getApplication<Application>().resources.openRawResource(R.raw.prompt_above_context)
+            val promptText = inputStream.bufferedReader().use { it.readText() }
+            sendMessage(promptText)
+        } catch (e: Exception) {
+            _error.value = "Ошибка при отправке промпта из файла: ${e.message}"
+        }
     }
 
     override fun onCleared() {
