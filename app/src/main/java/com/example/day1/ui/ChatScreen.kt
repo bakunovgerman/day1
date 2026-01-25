@@ -52,12 +52,14 @@ fun ChatScreen(
     val selectedModels by viewModel.selectedModels.collectAsState()
     val usePromptAboveContext by viewModel.usePromptAboveContext.collectAsState()
     val useContextCompression by viewModel.useContextCompression.collectAsState()
+    val isGeneratingSummary by viewModel.isGeneratingSummary.collectAsState()
     
     var messageText by remember { mutableStateOf("") }
     var showSystemPromptDialog by remember { mutableStateOf(false) }
     
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     
     // Определяем, находимся ли мы внизу списка
     val isAtBottom by remember {
@@ -71,6 +73,18 @@ fun ChatScreen(
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
+        }
+    }
+    
+    // Показываем снэкбар при генерации summary
+    LaunchedEffect(isGeneratingSummary) {
+        if (isGeneratingSummary) {
+            snackbarHostState.showSnackbar(
+                message = "Генерация краткого резюме диалога...",
+                duration = SnackbarDuration.Indefinite
+            )
+        } else {
+            snackbarHostState.currentSnackbarData?.dismiss()
         }
     }
     
@@ -95,6 +109,33 @@ fun ChatScreen(
                     }
                 }
             )
+        },
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState) { data ->
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF4CAF50), // Зеленый цвет
+                    shadowElevation = 6.dp,
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                        Text(
+                            text = data.visuals.message,
+                            color = Color.White,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            }
         }
     ) { paddingValues ->
         Column(
@@ -689,7 +730,7 @@ fun SystemPromptDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "При 7-м сообщении создается summary",
+                            text = "Каждые 7 сообщений создается summary",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
@@ -702,7 +743,7 @@ fun SystemPromptDialog(
                 
                 if (useContextCompression) {
                     Text(
-                        text = "✨ После 3 пар вопрос-ответ (при отправке 7-го сообщения) будет создано краткое резюме диалога, которое будет использоваться вместо полной истории.",
+                        text = "✨ Каждые 7 сообщений (при 7, 14, 21 и т.д.) будет создано краткое резюме диалога, которое будет использоваться вместо полной истории. Во время генерации резюме вы увидите зеленый снэкбар с лоудером.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.fillMaxWidth()

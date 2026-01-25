@@ -62,6 +62,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _useContextCompression = MutableStateFlow(false)
     val useContextCompression: StateFlow<Boolean> = _useContextCompression.asStateFlow()
 
+    // Состояние генерации summary
+    private val _isGeneratingSummary = MutableStateFlow(false)
+    val isGeneratingSummary: StateFlow<Boolean> = _isGeneratingSummary.asStateFlow()
+
     // Сохраненный summary контекста
     private var contextSummary: String? = null
 
@@ -107,9 +111,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             // Проверяем, нужно ли генерировать summary
-            // После добавления userMessage, если size == 7, значит у нас 6 предыдущих сообщений (3 пары)
-            // Генерируем summary этих 6 сообщений и отправляем с текущим (7-м)
-            if (_useContextCompression.value && _messages.value.size == 7 && contextSummary == null) {
+            // Каждые 7 сообщений (при 7, 14, 21, 28 и т.д.) генерируем новый summary
+            if (_useContextCompression.value && _messages.value.size % 7 == 0) {
+                _isGeneratingSummary.value = true
+                
                 // Генерируем summary всех сообщений (включая только что добавленное)
                 val dialogText =
                     _messages.value.take(_messages.value.size - 1).joinToString("\n\n") { msg ->
@@ -119,9 +124,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val summaryResult = openRouterService.generateSummary(dialogText, apiKey)
                 summaryResult.onSuccess { summary ->
                     contextSummary = summary
+                    _isGeneratingSummary.value = false
                 }
                     .onFailure { exception ->
                         _error.value = "Ошибка генерации summary: ${exception.message}"
+                        _isGeneratingSummary.value = false
                         _isLoading.value = false
                         return@launch
                     }
