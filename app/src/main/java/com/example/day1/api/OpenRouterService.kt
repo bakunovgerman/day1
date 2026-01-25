@@ -168,6 +168,54 @@ class OpenRouterService {
         }
     }
 
+    // Генерация summary для сжатия контекста
+    suspend fun generateSummary(
+        dialogText: String,
+        apiKey: String
+    ): Result<String> {
+        return try {
+            val systemPrompt = """Ты - эксперт по сжатию диалогов. Твоя задача - создать краткое, лаконичное резюме диалога на русском языке, сохраняя ключевую информацию, контекст и важные детали. Резюме должно быть максимально сжатым, но информативным."""
+            
+            val userPrompt = """Создай краткое резюме следующего диалога, выделив ключевые темы, решения и важную информацию:
+
+$dialogText
+
+Резюме должно быть кратким (2-4 предложения) и содержать только самое важное."""
+
+            val messages = listOf(
+                MessageContent(role = "system", content = systemPrompt),
+                MessageContent(role = "user", content = userPrompt)
+            )
+
+            val response: OpenRouterResponse = client.post("https://openrouter.ai/api/v1/chat/completions") {
+                contentType(ContentType.Application.Json)
+                headers {
+                    append("Authorization", "Bearer $apiKey")
+                    append("HTTP-Referer", "com.example.day1")
+                    append("X-Title", "Day1 Chat App")
+                }
+                setBody(
+                    OpenRouterRequest(
+                        model = "openai/gpt-4o-mini",
+                        messages = messages,
+                        temperature = 1.0
+                    )
+                )
+            }.body()
+
+            if (response.error != null) {
+                Result.failure(Exception(response.error.message))
+            } else if (response.choices.isNullOrEmpty()) {
+                Result.failure(Exception("Пустой ответ от сервера"))
+            } else {
+                Result.success(response.choices[0].message.content)
+            }
+        } catch (e: Exception) {
+            Log.e("OpenRouterService", "Error generating summary", e)
+            Result.failure(e)
+        }
+    }
+
     fun close() {
         client.close()
     }

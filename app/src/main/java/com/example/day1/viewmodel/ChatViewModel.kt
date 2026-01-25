@@ -58,15 +58,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedModels = MutableStateFlow<List<AIModel>>(emptyList())
     val selectedModels: StateFlow<List<AIModel>> = _selectedModels.asStateFlow()
 
+    // Сжатие контекста
+    private val _useContextCompression = MutableStateFlow(false)
+    val useContextCompression: StateFlow<Boolean> = _useContextCompression.asStateFlow()
+
+    // Сохраненный summary контекста
+    private var contextSummary: String? = null
+
     init {
         // Проверка наличия API ключа при инициализации
         if (apiKey.isEmpty()) {
             _error.value = "API ключ не настроен. Добавьте OPENROUTER_API_KEY в local.properties"
         }
-        
+
         // Загружаем список доступных моделей
         _availableModels.value = openRouterService.getAvailableModels()
-        
+
         // По умолчанию выбираем первые две модели
         _selectedModels.value = _availableModels.value.take(2)
     }
@@ -93,22 +100,60 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             content = text
         )
 
+
         _messages.value = _messages.value + userMessage
         _isLoading.value = true
         _error.value = null
 
         viewModelScope.launch {
-            // Добавляем system prompt в начало истории сообщений
-            val systemMessage = MessageContent(
-                role = "system",
-                content = _systemPrompt.value
-            )
+            // Проверяем, нужно ли генерировать summary
+            // После добавления userMessage, если size == 7, значит у нас 6 предыдущих сообщений (3 пары)
+            // Генерируем summary этих 6 сообщений и отправляем с текущим (7-м)
+            if (_useContextCompression.value && _messages.value.size == 7 && contextSummary == null) {
+                // Генерируем summary всех сообщений (включая только что добавленное)
+                val dialogText =
+                    _messages.value.take(_messages.value.size - 1).joinToString("\n\n") { msg ->
+                        "${if (msg.role == "user") "Пользователь" else "Ассистент"}: ${msg.content}"
+                    }
 
-            val messageHistory = listOf(systemMessage) + _messages.value.map { msg ->
-                MessageContent(
-                    role = msg.role,
-                    content = msg.content
+                val summaryResult = openRouterService.generateSummary(dialogText, apiKey)
+                summaryResult.onSuccess { summary ->
+                    contextSummary = summary
+                }
+                    .onFailure { exception ->
+                        _error.value = "Ошибка генерации summary: ${exception.message}"
+                        _isLoading.value = false
+                        return@launch
+                    }
+            }
+
+            // Формируем список сообщений для отправки
+            val messageHistory = if (_useContextCompression.value && contextSummary != null) {
+                // Используем summary как system prompt
+                val systemMessage = MessageContent(
+                    role = "system",
+                    content = if (_systemPrompt.value.isNotEmpty()) {
+                        "${_systemPrompt.value}\n\nКонтекст предыдущего диалога: $contextSummary"
+                    } else {
+                        "Контекст предыдущего диалога: $contextSummary"
+                    }
                 )
+
+                // Отправляем только последнее сообщение пользователя
+                listOf(systemMessage, MessageContent(role = "user", content = text))
+            } else {
+                // Обычная логика без сжатия - отправляем всю историю
+                val systemMessage = MessageContent(
+                    role = "system",
+                    content = _systemPrompt.value
+                )
+
+                listOf(systemMessage) + _messages.value.map { msg ->
+                    MessageContent(
+                        role = msg.role,
+                        content = msg.content
+                    )
+                }
             }
 
             // Отправляем запросы ко всем выбранным моделям одновременно
@@ -124,7 +169,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 result.onSuccess { modelResponse ->
                     try {
                         // Пытаемся распарсить JSON ответ
-                        val parsedResponse = json.decodeFromString<AssistantResponse>(modelResponse.content)
+                        val parsedResponse =
+                            json.decodeFromString<AssistantResponse>(modelResponse.content)
 
                         val assistantMessage = ChatMessage(
                             id = UUID.randomUUID().toString(),
@@ -159,9 +205,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         _messages.value = _messages.value + assistantMessage
                     }
                 }
-                .onFailure { exception ->
-                    _error.value = "Ошибка: ${exception.message}"
-                }
+                    .onFailure { exception ->
+                        _error.value = "Ошибка: ${exception.message}"
+                    }
             }
 
             _isLoading.value = false
@@ -175,6 +221,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun clearChat() {
         _messages.value = emptyList()
         _error.value = null
+        contextSummary = null // Сбрасываем summary при очистке чата
     }
 
     fun updateSystemPrompt(newPrompt: String) {
@@ -203,9 +250,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _usePromptAboveContext.value = enabled
     }
 
+    fun toggleContextCompression(enabled: Boolean) {
+        _useContextCompression.value = enabled
+        if (!enabled) {
+            contextSummary = null // Сбрасываем summary при выключении
+        }
+    }
+
     fun sendPromptFromFile() {
         try {
-            val inputStream = getApplication<Application>().resources.openRawResource(R.raw.prompt_above_context)
+            val inputStream =
+                getApplication<Application>().resources.openRawResource(R.raw.prompt_above_context)
             val promptText = inputStream.bufferedReader().use { it.readText() }
             sendMessage(promptText)
         } catch (e: Exception) {

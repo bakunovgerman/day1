@@ -51,6 +51,7 @@ fun ChatScreen(
     val availableModels by viewModel.availableModels.collectAsState()
     val selectedModels by viewModel.selectedModels.collectAsState()
     val usePromptAboveContext by viewModel.usePromptAboveContext.collectAsState()
+    val useContextCompression by viewModel.useContextCompression.collectAsState()
     
     var messageText by remember { mutableStateOf("") }
     var showSystemPromptDialog by remember { mutableStateOf(false) }
@@ -247,6 +248,7 @@ fun ChatScreen(
             availableModels = availableModels,
             selectedModels = selectedModels,
             usePromptAboveContext = usePromptAboveContext,
+            useContextCompression = useContextCompression,
             onDismiss = { showSystemPromptDialog = false },
             onSave = { newPrompt ->
                 viewModel.updateSystemPrompt(newPrompt)
@@ -263,6 +265,9 @@ fun ChatScreen(
             },
             onPromptAboveContextToggle = { enabled ->
                 viewModel.togglePromptAboveContext(enabled)
+            },
+            onContextCompressionToggle = { enabled ->
+                viewModel.toggleContextCompression(enabled)
             }
         )
     }
@@ -509,12 +514,14 @@ fun SystemPromptDialog(
     availableModels: List<AIModel>,
     selectedModels: List<AIModel>,
     usePromptAboveContext: Boolean,
+    useContextCompression: Boolean,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit,
     onReset: () -> Unit,
     onTemperatureChange: (Double) -> Unit,
     onModelToggle: (AIModel) -> Unit,
-    onPromptAboveContextToggle: (Boolean) -> Unit
+    onPromptAboveContextToggle: (Boolean) -> Unit,
+    onContextCompressionToggle: (Boolean) -> Unit
 ) {
     var editedPrompt by remember { mutableStateOf(currentPrompt) }
     
@@ -658,6 +665,44 @@ fun SystemPromptDialog(
                 if (usePromptAboveContext) {
                     Text(
                         text = "ℹ️ Промпт загружается из файла. Поле ввода сообщений отключено.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                
+                HorizontalDivider()
+                
+                // Сжатие контекста
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Сжатие контекста:",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "При 7-м сообщении создается summary",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                    Switch(
+                        checked = useContextCompression,
+                        onCheckedChange = { onContextCompressionToggle(it) }
+                    )
+                }
+                
+                if (useContextCompression) {
+                    Text(
+                        text = "✨ После 3 пар вопрос-ответ (при отправке 7-го сообщения) будет создано краткое резюме диалога, которое будет использоваться вместо полной истории.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.fillMaxWidth()
