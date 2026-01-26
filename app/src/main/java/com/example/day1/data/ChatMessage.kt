@@ -91,3 +91,12 @@ data class ModelResponse(
     val totalTokens: Int,
     val cost: Double
 )
+
+// Результат генерации summary с метриками
+data class SummaryResponse(
+    val summary: String,
+    val promptTokens: Int,
+    val completionTokens: Int,
+    val totalTokens: Int,
+    val cost: Double
+)

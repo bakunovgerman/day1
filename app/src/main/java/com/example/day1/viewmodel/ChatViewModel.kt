@@ -10,6 +10,7 @@ import com.example.day1.data.AIModel
 import com.example.day1.data.AssistantResponse
 import com.example.day1.data.ChatMessage
 import com.example.day1.data.MessageContent
+import com.example.day1.data.SummaryResponse
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -126,8 +127,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                 val summaryResult = openRouterService.generateSummary(dialogText, apiKey)
-                summaryResult.onSuccess { summary ->
-                    contextSummary = summary
+                summaryResult.onSuccess { summaryResponse ->
+                    contextSummary = summaryResponse.summary
+                    // Добавляем токены summary к общему счетчику
+                    _totalTokens.value += summaryResponse.totalTokens
                     _isGeneratingSummary.value = false
                 }
                     .onFailure { exception ->

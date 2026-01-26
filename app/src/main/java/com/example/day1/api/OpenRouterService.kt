@@ -6,6 +6,7 @@ import com.example.day1.data.MessageContent
 import com.example.day1.data.ModelResponse
 import com.example.day1.data.OpenRouterRequest
 import com.example.day1.data.OpenRouterResponse
+import com.example.day1.data.SummaryResponse
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.android.*
@@ -172,7 +173,7 @@ class OpenRouterService {
     suspend fun generateSummary(
         dialogText: String,
         apiKey: String
-    ): Result<String> {
+    ): Result<SummaryResponse> {
         return try {
             val systemPrompt = """Ты - эксперт по сжатию диалогов. Твоя задача - создать краткое, лаконичное резюме диалога на русском языке, сохраняя ключевую информацию, контекст и важные детали. Резюме должно быть максимально сжатым, но информативным."""
             
@@ -208,7 +209,30 @@ $dialogText
             } else if (response.choices.isNullOrEmpty()) {
                 Result.failure(Exception("Пустой ответ от сервера"))
             } else {
-                Result.success(response.choices[0].message.content)
+                val usage = response.usage
+                val promptTokens = usage?.prompt_tokens ?: 0
+                val completionTokens = usage?.completion_tokens ?: 0
+                val totalTokens = usage?.total_tokens ?: (promptTokens + completionTokens)
+                val cost = usage?.cost ?: 0.0
+
+                // Логирование статистики токенов для summary
+                Log.d("OpenRouterService", """
+                    Summary generation:
+                    Токены запроса (prompt): $promptTokens
+                    Токены ответа (completion): $completionTokens
+                    Всего токенов: $totalTokens
+                    Стоимость: $$cost
+                """.trimIndent())
+
+                Result.success(
+                    SummaryResponse(
+                        summary = response.choices[0].message.content,
+                        promptTokens = promptTokens,
+                        completionTokens = completionTokens,
+                        totalTokens = totalTokens,
+                        cost = cost
+                    )
+                )
             }
         } catch (e: Exception) {
             Log.e("OpenRouterService", "Error generating summary", e)
