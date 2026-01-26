@@ -145,38 +145,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             // Сохраняем сообщение пользователя в БД
             chatRepository.saveMessage(userMessage)
-            // Получаем количество сообщений из БД
-            val messageCount = chatRepository.getMessagesCount()
             
-            // Проверяем, нужно ли генерировать summary
-            // Каждые 11 сообщений (при 11, 22, 33, 44 и т.д.) генерируем новый summary
-            if (_useContextCompression.value && messageCount % 11 == 0) {
-                _isGeneratingSummary.value = true
-                
-                // Генерируем summary всех сообщений (включая только что добавленное)
-                val allMessages = _messages.value
-                val dialogText =
-                    allMessages.take(allMessages.size - 1).joinToString("\n\n") { msg ->
-                        "${if (msg.role == "user") "Пользователь" else "Ассистент"}: ${msg.content}"
-                    }
-
-                val summaryResult = openRouterService.generateSummary(dialogText, apiKey)
-                summaryResult.onSuccess { summaryResponse ->
-                    contextSummary = summaryResponse.summary
-                    // Сохраняем суммаризацию в БД и помечаем все сообщения как needSend = false
-                    chatRepository.saveSummary(summaryResponse)
-                    // Добавляем токены summary к общему счетчику
-                    _totalTokens.value += summaryResponse.totalTokens
-                    _isGeneratingSummary.value = false
-                }
-                    .onFailure { exception ->
-                        _error.value = "Ошибка генерации summary: ${exception.message}"
-                        _isGeneratingSummary.value = false
-                        _isLoading.value = false
-                        return@launch
-                    }
-            }
-
             // Получаем сообщения, которые нужно отправлять (needSend = true)
             val messagesToSend = withContext(Dispatchers.IO) {
                 chatRepository.getMessagesForSending()
@@ -277,6 +246,35 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
                     .onFailure { exception ->
                         _error.value = "Ошибка: ${exception.message}"
+                    }
+            }
+
+            // ПОСЛЕ получения всех ответов от LLM проверяем, нужно ли генерировать summary
+            val messageCount = chatRepository.getMessagesCount()
+            
+            // Каждые 11 сообщений (при 11, 22, 33, 44 и т.д.) генерируем новый summary
+            if (_useContextCompression.value && messageCount % 11 == 0) {
+                _isGeneratingSummary.value = true
+                
+                // Генерируем summary всех сообщений (включая только что добавленные ответы от LLM)
+                val allMessages = _messages.value
+                val dialogText =
+                    allMessages.joinToString("\n\n") { msg ->
+                        "${if (msg.role == "user") "Пользователь" else "Ассистент"}: ${msg.content}"
+                    }
+
+                val summaryResult = openRouterService.generateSummary(dialogText, apiKey)
+                summaryResult.onSuccess { summaryResponse ->
+                    contextSummary = summaryResponse.summary
+                    // Сохраняем суммаризацию в БД и помечаем все сообщения как needSend = false
+                    chatRepository.saveSummary(summaryResponse)
+                    // Добавляем токены summary к общему счетчику
+                    _totalTokens.value += summaryResponse.totalTokens
+                    _isGeneratingSummary.value = false
+                }
+                    .onFailure { exception ->
+                        _error.value = "Ошибка генерации summary: ${exception.message}"
+                        _isGeneratingSummary.value = false
                     }
             }
 
