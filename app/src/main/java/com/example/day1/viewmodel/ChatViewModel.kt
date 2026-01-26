@@ -116,8 +116,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             // Проверяем, нужно ли генерировать summary
-            // Каждые 7 сообщений (при 7, 14, 21, 28 и т.д.) генерируем новый summary
-            if (_useContextCompression.value && _messages.value.size % 7 == 0) {
+            // Каждые 11 сообщений (при 11, 22, 33, 44 и т.д.) генерируем новый summary
+            if (_useContextCompression.value && _messages.value.size % 11 == 0) {
                 _isGeneratingSummary.value = true
                 
                 // Генерируем summary всех сообщений (включая только что добавленное)

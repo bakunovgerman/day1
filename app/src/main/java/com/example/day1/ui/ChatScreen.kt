@@ -752,7 +752,7 @@ fun SystemPromptDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "Каждые 7 сообщений создается summary",
+                            text = "Каждые 11 сообщений создается summary",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
@@ -765,7 +765,7 @@ fun SystemPromptDialog(
                 
                 if (useContextCompression) {
                     Text(
-                        text = "✨ Каждые 7 сообщений (при 7, 14, 21 и т.д.) будет создано краткое резюме диалога, которое будет использоваться вместо полной истории. Во время генерации резюме вы увидите зеленый снэкбар с лоудером.",
+                        text = "✨ Каждые 11 сообщений (при 11, 22, 33 и т.д.) будет создано краткое резюме диалога, которое будет использоваться вместо полной истории. Во время генерации резюме вы увидите зеленый снэкбар с лоудером.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.fillMaxWidth()
