@@ -52,41 +52,6 @@ class OpenRouterService {
 
     fun getAvailableModels(): List<AIModel> = availableModels
 
-    suspend fun sendMessage(
-        messages: List<MessageContent>,
-        apiKey: String,
-        temperature: Double = 1.0
-    ): Result<String> {
-        return try {
-            val response: OpenRouterResponse = client.post("https://openrouter.ai/api/v1/chat/completions") {
-                contentType(ContentType.Application.Json)
-                headers {
-                    append("Authorization", "Bearer $apiKey")
-                    append("HTTP-Referer", "com.example.day1")
-                    append("X-Title", "Day1 Chat App")
-                }
-                setBody(
-                    OpenRouterRequest(
-                        model = "deepseek/deepseek-v3.2",
-                        messages = messages,
-                        temperature = temperature
-                    )
-                )
-            }.body()
-
-            if (response.error != null) {
-                Result.failure(Exception(response.error.message))
-            } else if (response.choices.isNullOrEmpty()) {
-                Result.failure(Exception("Пустой ответ от сервера"))
-            } else {
-                Result.success(response.choices[0].message.content)
-            }
-        } catch (e: Exception) {
-            Log.e("OpenRouterService", "Error sending message", e)
-            Result.failure(e)
-        }
-    }
-
     // Отправка запроса к нескольким моделям одновременно
     suspend fun sendMessageToMultipleModels(
         messages: List<MessageContent>,
