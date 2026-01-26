@@ -11,15 +11,26 @@ import com.example.day1.data.AssistantResponse
 import com.example.day1.data.ChatMessage
 import com.example.day1.data.MessageContent
 import com.example.day1.data.SummaryResponse
+import com.example.day1.db.AppDatabase
+import com.example.day1.repository.ChatRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import java.util.UUID
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val openRouterService = OpenRouterService()
+    
+    // Инициализация БД и репозитория
+    private val database = AppDatabase.getDatabase(application)
+    private val chatRepository = ChatRepository(
+        chatMessageDao = database.chatMessageDao(),
+        summaryDao = database.summaryDao()
+    )
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -85,6 +96,25 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         // По умолчанию выбираем первые две модели
         _selectedModels.value = _availableModels.value.take(2)
+        
+        // Загружаем историю чата из БД
+        loadChatHistory()
+    }
+    
+    private fun loadChatHistory() {
+        viewModelScope.launch {
+            // Подписываемся на изменения в БД
+            chatRepository.getAllMessages().collect { messages ->
+                _messages.value = messages
+                // Пересчитываем общее количество токенов
+                _totalTokens.value = messages.sumOf { it.tokensUsed ?: 0 }
+            }
+        }
+        
+        // Загружаем текущую суммаризацию
+        viewModelScope.launch {
+            contextSummary = chatRepository.getCurrentSummary()
+        }
     }
 
     fun sendMessage(text: String) {
@@ -109,26 +139,32 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             content = text
         )
 
-
-        _messages.value = _messages.value + userMessage
         _isLoading.value = true
         _error.value = null
 
         viewModelScope.launch {
+            // Сохраняем сообщение пользователя в БД
+            chatRepository.saveMessage(userMessage)
+            // Получаем количество сообщений из БД
+            val messageCount = chatRepository.getMessagesCount()
+            
             // Проверяем, нужно ли генерировать summary
             // Каждые 11 сообщений (при 11, 22, 33, 44 и т.д.) генерируем новый summary
-            if (_useContextCompression.value && _messages.value.size % 11 == 0) {
+            if (_useContextCompression.value && messageCount % 11 == 0) {
                 _isGeneratingSummary.value = true
                 
                 // Генерируем summary всех сообщений (включая только что добавленное)
+                val allMessages = _messages.value
                 val dialogText =
-                    _messages.value.take(_messages.value.size - 1).joinToString("\n\n") { msg ->
+                    allMessages.take(allMessages.size - 1).joinToString("\n\n") { msg ->
                         "${if (msg.role == "user") "Пользователь" else "Ассистент"}: ${msg.content}"
                     }
 
                 val summaryResult = openRouterService.generateSummary(dialogText, apiKey)
                 summaryResult.onSuccess { summaryResponse ->
                     contextSummary = summaryResponse.summary
+                    // Сохраняем суммаризацию в БД и помечаем все сообщения как needSend = false
+                    chatRepository.saveSummary(summaryResponse)
                     // Добавляем токены summary к общему счетчику
                     _totalTokens.value += summaryResponse.totalTokens
                     _isGeneratingSummary.value = false
@@ -141,6 +177,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     }
             }
 
+            // Получаем сообщения, которые нужно отправлять (needSend = true)
+            val messagesToSend = withContext(Dispatchers.IO) {
+                chatRepository.getMessagesForSending()
+            }
+            
             // Формируем список сообщений для отправки
             val messageHistory = if (_useContextCompression.value && contextSummary != null) {
                 // Используем summary как system prompt
@@ -153,8 +194,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 )
 
-                // Отправляем только последнее сообщение пользователя
-                listOf(systemMessage, MessageContent(role = "user", content = text))
+                // Отправляем только сообщения с needSend = true
+                listOf(systemMessage) + messagesToSend.map { msg ->
+                    MessageContent(
+                        role = msg.role,
+                        content = msg.content
+                    )
+                }
             } else {
                 // Обычная логика без сжатия - отправляем всю историю
                 val systemMessage = MessageContent(
@@ -201,7 +247,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             completionTokens = modelResponse.completionTokens,
                             cost = modelResponse.cost
                         )
-                        _messages.value = _messages.value + assistantMessage
+                        // Сохраняем сообщение ассистента в БД
+                        chatRepository.saveMessage(assistantMessage)
                         // Обновляем общее число токенов
                         modelResponse.totalTokens?.let { tokens ->
                             _totalTokens.value += tokens
@@ -220,7 +267,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             completionTokens = modelResponse.completionTokens,
                             cost = modelResponse.cost
                         )
-                        _messages.value = _messages.value + assistantMessage
+                        // Сохраняем сообщение ассистента в БД
+                        chatRepository.saveMessage(assistantMessage)
                         // Обновляем общее число токенов
                         modelResponse.totalTokens?.let { tokens ->
                             _totalTokens.value += tokens
@@ -241,7 +289,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearChat() {
-        _messages.value = emptyList()
+        viewModelScope.launch {
+            // Очищаем БД
+            chatRepository.clearAllData()
+        }
         _error.value = null
         contextSummary = null // Сбрасываем summary при очистке чата
         _totalTokens.value = 0 // Сбрасываем счетчик токенов
