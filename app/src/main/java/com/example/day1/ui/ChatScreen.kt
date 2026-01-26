@@ -53,6 +53,7 @@ fun ChatScreen(
     val usePromptAboveContext by viewModel.usePromptAboveContext.collectAsState()
     val useContextCompression by viewModel.useContextCompression.collectAsState()
     val isGeneratingSummary by viewModel.isGeneratingSummary.collectAsState()
+    val totalTokens by viewModel.totalTokens.collectAsState()
     
     var messageText by remember { mutableStateOf("") }
     var showSystemPromptDialog by remember { mutableStateOf(false) }
@@ -143,6 +144,27 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            // Счетчик токенов
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Всего токенов: $totalTokens",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            
             // Error message
             error?.let { errorMessage ->
                 Surface(

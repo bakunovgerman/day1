@@ -69,6 +69,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // Сохраненный summary контекста
     private var contextSummary: String? = null
 
+    // Общее число токенов за диалог
+    private val _totalTokens = MutableStateFlow(0)
+    val totalTokens: StateFlow<Int> = _totalTokens.asStateFlow()
+
     init {
         // Проверка наличия API ключа при инициализации
         if (apiKey.isEmpty()) {
@@ -195,6 +199,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             cost = modelResponse.cost
                         )
                         _messages.value = _messages.value + assistantMessage
+                        // Обновляем общее число токенов
+                        modelResponse.totalTokens?.let { tokens ->
+                            _totalTokens.value += tokens
+                        }
                     } catch (e: Exception) {
                         // Если не удалось распарсить JSON, сохраняем как обычное сообщение
                         val assistantMessage = ChatMessage(
@@ -210,6 +218,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             cost = modelResponse.cost
                         )
                         _messages.value = _messages.value + assistantMessage
+                        // Обновляем общее число токенов
+                        modelResponse.totalTokens?.let { tokens ->
+                            _totalTokens.value += tokens
+                        }
                     }
                 }
                     .onFailure { exception ->
@@ -229,6 +241,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _messages.value = emptyList()
         _error.value = null
         contextSummary = null // Сбрасываем summary при очистке чата
+        _totalTokens.value = 0 // Сбрасываем счетчик токенов
     }
 
     fun updateSystemPrompt(newPrompt: String) {
