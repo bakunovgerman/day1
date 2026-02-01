@@ -10,7 +10,6 @@ import com.example.day1.data.AIModel
 import com.example.day1.data.AssistantResponse
 import com.example.day1.data.ChatMessage
 import com.example.day1.data.MessageContent
-import com.example.day1.data.SummaryResponse
 import com.example.day1.db.AppDatabase
 import com.example.day1.repository.ChatRepository
 import kotlinx.coroutines.Dispatchers
