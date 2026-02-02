@@ -1,6 +1,7 @@
 package com.example.day1.data
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 data class ChatMessage(
     val id: String,
@@ -30,13 +31,17 @@ data class AssistantResponse(
 data class OpenRouterRequest(
     val model: String,
     val messages: List<MessageContent>,
-    val temperature: Double = 1.0
+    val temperature: Double = 1.0,
+    val tools: List<ToolDefinition>? = null
 )
 
 @Serializable
 data class MessageContent(
     val role: String,
-    val content: String
+    val content: String? = null,
+    val tool_calls: List<ToolCall>? = null,
+    val tool_call_id: String? = null,
+    val name: String? = null
 )
 
 @Serializable
@@ -56,7 +61,8 @@ data class Choice(
 @Serializable
 data class MessageResponse(
     val role: String,
-    val content: String
+    val content: String? = null,
+    val tool_calls: List<ToolCall>? = null
 )
 
 @Serializable
@@ -84,12 +90,13 @@ data class AIModel(
 // Результат запроса к модели с метриками
 data class ModelResponse(
     val modelName: String,
-    val content: String,
+    val content: String?,
     val responseTimeMs: Long,
     val promptTokens: Int,
     val completionTokens: Int,
     val totalTokens: Int,
-    val cost: Double
+    val cost: Double,
+    val toolCalls: List<ToolCall>? = null
 )
 
 // Результат генерации summary с метриками
@@ -99,4 +106,31 @@ data class SummaryResponse(
     val completionTokens: Int,
     val totalTokens: Int,
     val cost: Double
+)
+
+// Tool calling models
+@Serializable
+data class ToolDefinition(
+    val type: String = "function",
+    val function: FunctionDefinition
+)
+
+@Serializable
+data class FunctionDefinition(
+    val name: String,
+    val description: String? = null,
+    val parameters: JsonObject? = null
+)
+
+@Serializable
+data class ToolCall(
+    val id: String,
+    val type: String = "function",
+    val function: FunctionCall
+)
+
+@Serializable
+data class FunctionCall(
+    val name: String,
+    val arguments: String
 )

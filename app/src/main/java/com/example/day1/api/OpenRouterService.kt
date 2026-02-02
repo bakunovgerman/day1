@@ -7,6 +7,7 @@ import com.example.day1.data.ModelResponse
 import com.example.day1.data.OpenRouterRequest
 import com.example.day1.data.OpenRouterResponse
 import com.example.day1.data.SummaryResponse
+import com.example.day1.data.ToolDefinition
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.android.*
@@ -28,6 +29,7 @@ class OpenRouterService {
                 prettyPrint = true
                 isLenient = true
                 ignoreUnknownKeys = true
+                encodeDefaults = true  // Важно для передачи дефолтных значений (например, type = "function")
             })
         }
         install(Logging) {
@@ -57,11 +59,12 @@ class OpenRouterService {
         messages: List<MessageContent>,
         apiKey: String,
         models: List<AIModel>,
-        temperature: Double = 1.0
+        temperature: Double = 1.0,
+        tools: List<ToolDefinition>? = null
     ): List<Result<ModelResponse>> = coroutineScope {
         models.map { model ->
             async {
-                sendMessageToModel(messages, apiKey, model, temperature)
+                sendMessageToModel(messages, apiKey, model, temperature, tools)
             }
         }.awaitAll()
     }
@@ -71,7 +74,8 @@ class OpenRouterService {
         messages: List<MessageContent>,
         apiKey: String,
         model: AIModel,
-        temperature: Double
+        temperature: Double,
+        tools: List<ToolDefinition>? = null
     ): Result<ModelResponse> {
         return try {
             var response: OpenRouterResponse? = null
@@ -87,14 +91,15 @@ class OpenRouterService {
                         OpenRouterRequest(
                             model = model.id,
                             messages = messages,
-                            temperature = temperature
+                            temperature = temperature,
+                            tools = tools
                         )
                     )
                 }.body()
             }
 
             val resp = response!!
-            
+
             if (resp.error != null) {
                 Result.failure(Exception(resp.error.message))
             } else if (resp.choices.isNullOrEmpty()) {
@@ -107,14 +112,16 @@ class OpenRouterService {
                 val cost = usage?.cost ?: 0.0
 
                 // Логирование статистики токенов
-                Log.d("OpenRouterService", """
+                Log.d(
+                    "OpenRouterService", """
                     Модель: ${model.displayName}
                     Время ответа: ${responseTime}ms
                     Токены запроса (prompt): $promptTokens
                     Токены ответа (completion): $completionTokens
                     Всего токенов: $totalTokens
                     Стоимость: $$cost
-                """.trimIndent())
+                """.trimIndent()
+                )
 
                 Result.success(
                     ModelResponse(
@@ -124,7 +131,8 @@ class OpenRouterService {
                         promptTokens = promptTokens,
                         completionTokens = completionTokens,
                         totalTokens = totalTokens,
-                        cost = cost
+                        cost = cost,
+                        toolCalls = resp.choices[0].message.tool_calls
                     )
                 )
             }
@@ -140,9 +148,11 @@ class OpenRouterService {
         apiKey: String
     ): Result<SummaryResponse> {
         return try {
-            val systemPrompt = """Ты - эксперт по сжатию диалогов. Твоя задача - создать краткое, лаконичное резюме диалога на русском языке, сохраняя ключевую информацию, контекст и важные детали. Резюме должно быть максимально сжатым, но информативным."""
-            
-            val userPrompt = """Создай краткое резюме следующего диалога, выделив ключевые темы, решения и важную информацию:
+            val systemPrompt =
+                """Ты - эксперт по сжатию диалогов. Твоя задача - создать краткое, лаконичное резюме диалога на русском языке, сохраняя ключевую информацию, контекст и важные детали. Резюме должно быть максимально сжатым, но информативным."""
+
+            val userPrompt =
+                """Создай краткое резюме следующего диалога, выделив ключевые темы, решения и важную информацию:
 
 $dialogText
 
@@ -153,21 +163,22 @@ $dialogText
                 MessageContent(role = "user", content = userPrompt)
             )
 
-            val response: OpenRouterResponse = client.post("https://openrouter.ai/api/v1/chat/completions") {
-                contentType(ContentType.Application.Json)
-                headers {
-                    append("Authorization", "Bearer $apiKey")
-                    append("HTTP-Referer", "com.example.day1")
-                    append("X-Title", "Day1 Chat App")
-                }
-                setBody(
-                    OpenRouterRequest(
-                        model = "openai/gpt-4o-mini",
-                        messages = messages,
-                        temperature = 1.0
+            val response: OpenRouterResponse =
+                client.post("https://openrouter.ai/api/v1/chat/completions") {
+                    contentType(ContentType.Application.Json)
+                    headers {
+                        append("Authorization", "Bearer $apiKey")
+                        append("HTTP-Referer", "com.example.day1")
+                        append("X-Title", "Day1 Chat App")
+                    }
+                    setBody(
+                        OpenRouterRequest(
+                            model = "openai/gpt-4o-mini",
+                            messages = messages,
+                            temperature = 1.0
+                        )
                     )
-                )
-            }.body()
+                }.body()
 
             if (response.error != null) {
                 Result.failure(Exception(response.error.message))
@@ -181,17 +192,19 @@ $dialogText
                 val cost = usage?.cost ?: 0.0
 
                 // Логирование статистики токенов для summary
-                Log.d("OpenRouterService", """
+                Log.d(
+                    "OpenRouterService", """
                     Summary generation:
                     Токены запроса (prompt): $promptTokens
                     Токены ответа (completion): $completionTokens
                     Всего токенов: $totalTokens
                     Стоимость: $$cost
-                """.trimIndent())
+                """.trimIndent()
+                )
 
                 Result.success(
                     SummaryResponse(
-                        summary = response.choices[0].message.content,
+                        summary = response.choices.firstOrNull()?.message?.content ?: "",
                         promptTokens = promptTokens,
                         completionTokens = completionTokens,
                         totalTokens = totalTokens,

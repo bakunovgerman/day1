@@ -66,7 +66,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-    implementation("com.github.bakunovgerman:McpClient:v1.1.0")
+    implementation("com.github.bakunovgerman:McpClient:1.5.0")
     
     // Ktor
     implementation(libs.ktor.client.core)
